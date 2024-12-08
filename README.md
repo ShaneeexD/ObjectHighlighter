@@ -18,3 +18,5 @@ A RuneLite plugin that allows you to highlight any object in-game with customiza
    - Choose Color (pick custom highlight color)
    - Style: Outline/Clickbox (select highlight style)
 4. Remove highlights using the same menu
+
+![image](https://github.com/user-attachments/assets/7df5914e-31aa-4533-8677-6f236ecac629)
