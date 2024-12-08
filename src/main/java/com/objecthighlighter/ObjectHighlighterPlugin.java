@@ -56,6 +56,9 @@ public class ObjectHighlighterPlugin extends Plugin implements KeyListener
     @Inject
     private KeyManager keyManager;
 
+    @Inject
+    private Gson gson;
+
     @Getter
     private final Map<TileObject, HighlightedObject> highlightedObjects = new HashMap<>();
     private boolean shiftPressed = false;
@@ -113,129 +116,103 @@ public class ObjectHighlighterPlugin extends Plugin implements KeyListener
 
     private void loadHighlightedObjects()
     {
-        String json = config.highlightedObjects();
-        if (json == null || json.isEmpty())
+        String json = configManager.getConfiguration("objecthighlighter", "savedHighlights");
+        if (json != null && !json.isEmpty())
         {
-            log.debug("No highlighted objects found in config");
-            return;
-        }
+            Type listType = new TypeToken<ArrayList<SavedHighlight>>(){}.getType();
+            List<SavedHighlight> savedHighlights = gson.fromJson(json, listType);
 
-        Gson gson = new Gson();
-        Type type = new TypeToken<ArrayList<SavedHighlight>>(){}.getType();
-        List<SavedHighlight> savedHighlights = gson.fromJson(json, type);
-
-        if (savedHighlights != null)
-        {
-            log.debug("Loading {} saved highlights", savedHighlights.size());
-            for (SavedHighlight saved : savedHighlights)
+            if (savedHighlights != null)
             {
-                if (saved.isHighlightAll())
+                log.debug("Loading {} saved highlights", savedHighlights.size());
+                for (SavedHighlight saved : savedHighlights)
                 {
-                    // For highlight all, we need to find all matching objects
-                    Scene scene = client.getScene();
-                    Tile[][][] tiles = scene.getTiles();
-
-                    for (int z = 0; z < tiles.length; z++)
+                    if (saved.isHighlightAll())
                     {
-                        for (int x = 0; x < tiles[z].length; x++)
+                        // For highlight all, we need to find all matching objects
+                        Scene scene = client.getScene();
+                        Tile[][][] tiles = scene.getTiles();
+
+                        for (int z = 0; z < tiles.length; z++)
                         {
-                            for (int y = 0; y < tiles[z][x].length; y++)
+                            for (int x = 0; x < tiles[z].length; x++)
                             {
-                                Tile tile = tiles[z][x][y];
-                                if (tile != null)
+                                for (int y = 0; y < tiles[z][x].length; y++)
                                 {
-                                    TileObject found = findObjectById(tile, saved.getId());
-                                    if (found != null)
+                                    Tile tile = tiles[z][x][y];
+                                    if (tile != null)
                                     {
-                                        highlightedObjects.put(found, new HighlightedObject(
-                                            found,
-                                            saved.getColor(),
-                                            saved.getStyle()
-                                        ));
+                                        TileObject found = findObjectById(tile, saved.getId());
+                                        if (found != null)
+                                        {
+                                            highlightedObjects.put(found, new HighlightedObject(
+                                                found,
+                                                saved.getColor(),
+                                                saved.getStyle()
+                                            ));
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-                else
-                {
-                    // For single object highlights, try to find the specific object
-                    WorldPoint worldPoint = new WorldPoint(saved.getX(), saved.getY(), saved.getPlane());
-                    LocalPoint localPoint = LocalPoint.fromWorld(client, worldPoint);
-                    
-                    if (localPoint != null)
-                    {
-                        int regionX = localPoint.getSceneX();
-                        int regionY = localPoint.getSceneY();
-                        
-                        if (regionX >= 0 && regionY >= 0)
-                        {
-                            TileObject obj = findTileObject(saved.getId(), regionX, regionY);
-                            if (obj != null)
-                            {
-                                highlightedObjects.put(obj, new HighlightedObject(
-                                    obj,
-                                    saved.getColor(),
-                                    saved.getStyle()
-                                ));
-                                log.debug("Loaded object {} at ({}, {})", saved.getId(), regionX, regionY);
-                            }
-                            else
-                            {
-                                log.debug("Could not find object {} at ({}, {})", saved.getId(), regionX, regionY);
-                            }
-                        }
-                    }
                     else
                     {
-                        log.debug("Could not convert world point to local: {}", worldPoint);
+                        // For single object highlights, try to find the specific object
+                        WorldPoint worldPoint = new WorldPoint(saved.getX(), saved.getY(), saved.getPlane());
+                        LocalPoint localPoint = LocalPoint.fromWorld(client, worldPoint);
+                        
+                        if (localPoint != null)
+                        {
+                            int regionX = localPoint.getSceneX();
+                            int regionY = localPoint.getSceneY();
+                            
+                            if (regionX >= 0 && regionY >= 0)
+                            {
+                                TileObject obj = findTileObject(saved.getId(), regionX, regionY);
+                                if (obj != null)
+                                {
+                                    highlightedObjects.put(obj, new HighlightedObject(
+                                        obj,
+                                        saved.getColor(),
+                                        saved.getStyle()
+                                    ));
+                                    log.debug("Loaded object {} at ({}, {})", saved.getId(), regionX, regionY);
+                                }
+                                else
+                                {
+                                    log.debug("Could not find object {} at ({}, {})", saved.getId(), regionX, regionY);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            log.debug("Could not convert world point to local: {}", worldPoint);
+                        }
                     }
                 }
+                log.debug("Loaded {} objects", highlightedObjects.size());
             }
-            log.debug("Loaded {} objects", highlightedObjects.size());
         }
     }
 
     private void saveHighlightedObjects()
     {
-        List<SavedHighlight> toStore = new ArrayList<>();
+        List<SavedHighlight> toSave = new ArrayList<>();
         for (Map.Entry<TileObject, HighlightedObject> entry : highlightedObjects.entrySet())
         {
-            TileObject obj = entry.getKey();
-            HighlightedObject highlight = entry.getValue();
-            LocalPoint loc = obj.getLocalLocation();
-            WorldPoint worldLoc = WorldPoint.fromLocal(client, loc);
-            
-            if (worldLoc != null)
-            {
-                boolean isHighlightAll = false;
-                // Check if this is part of a highlight all group
-                for (Map.Entry<TileObject, HighlightedObject> other : highlightedObjects.entrySet())
-                {
-                    if (other.getKey() != obj && other.getKey().getId() == obj.getId() &&
-                        other.getValue().getColor().equals(highlight.getColor()) &&
-                        other.getValue().getStyle() == highlight.getStyle())
-                    {
-                        isHighlightAll = true;
-                        break;
-                    }
-                }
-
-                toStore.add(SavedHighlight.fromHighlightedObject(
-                    highlight,
-                    worldLoc.getX(),
-                    worldLoc.getY(),
-                    worldLoc.getPlane(),
-                    isHighlightAll
-                ));
-            }
+            WorldPoint worldPoint = entry.getKey().getWorldLocation();
+            toSave.add(SavedHighlight.fromHighlightedObject(
+                entry.getValue(),
+                worldPoint.getX(),
+                worldPoint.getY(),
+                worldPoint.getPlane(),
+                entry.getValue().isHighlightAll()
+            ));
         }
-
-        Gson gson = new Gson();
-        String json = gson.toJson(toStore);
-        configManager.setConfiguration("objecthighlighter", "highlightedObjects", json);
-        log.debug("Saved {} highlights", toStore.size());
+        String json = gson.toJson(toSave);
+        configManager.setConfiguration("objecthighlighter", "savedHighlights", json);
+        log.debug("Saved {} highlights", toSave.size());
     }
 
     private TileObject findObjectById(Tile tile, int id)

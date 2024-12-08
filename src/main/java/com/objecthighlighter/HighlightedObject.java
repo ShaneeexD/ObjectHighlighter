@@ -29,10 +29,14 @@ public class HighlightedObject {
     @Getter
     private int plane;
 
+    @Getter @Setter
+    private boolean highlightAll;
+
     public HighlightedObject(TileObject tileObject, Color color, HighlightStyle style) {
         this.tileObject = tileObject;
         this.color = color;
         this.style = style;
+        this.highlightAll = false;
     }
 
     public HighlightedObject(int id, Color color, HighlightStyle style, int x, int y, int plane) {
@@ -42,6 +46,7 @@ public class HighlightedObject {
         this.x = x;
         this.y = y;
         this.plane = plane;
+        this.highlightAll = false;
     }
 
     public int getId() {
